@@ -1,0 +1,57 @@
+services:
+
+  # ── Local LLM ────────────────────────────────────────────────────────────────
+  ollama:
+    image: ollama/ollama:latest
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama   # persists downloaded models between restarts
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # ── FastAPI backend ───────────────────────────────────────────────────────────
+  backend:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      OLLAMA_BASE_URL: http://ollama:11434/v1
+      OLLAMA_API_KEY:  ollama
+      LLM_MODEL:       gemma3:12b
+      DATABASE_URL:    sqlite+aiosqlite:////app/data/studymate.db
+      MAX_FILE_SIZE_MB: "10"
+    volumes:
+      - ./data:/app/data            # SQLite file survives container restarts
+    depends_on:
+      ollama:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  # ── Streamlit frontend ────────────────────────────────────────────────────────
+  frontend:
+    build: .
+    command: >
+      uv run streamlit run frontend/app.py
+      --server.port 8501
+      --server.address 0.0.0.0
+      --server.headless true
+    ports:
+      - "8501:8501"
+    environment:
+      API_URL: http://backend:8000
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  ollama_data:

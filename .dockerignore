@@ -1,0 +1,10 @@
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+.git/
+.env
+studymate.db
+design_doc*.pdf
+*.md
+PLAN.md
