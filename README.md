@@ -1,89 +1,105 @@
-# StudyMate — AI Study Assistant
+# StudyMate — AI-ассистент для учёбы
 
-Upload a lecture file (PDF, DOCX, TXT) and get a **summary**, **flashcards**, and a **quiz** in one click — powered by a local LLM via Ollama.
+Загрузи лекцию (PDF, DOCX, TXT) и получи **конспект**, **флеш-карточки** и **тест** одним нажатием — на базе локальной LLM через Ollama.
 
-## How it works
+![Вкладка конспекта](media/summar.jpeg)
 
-Three AI agents run in parallel on the uploaded text:
+## Как это работает
 
-| Agent | Output |
+Три AI-агента обрабатывают текст параллельно:
+
+| Агент | Результат |
 |---|---|
-| SummaryAgent | 7–10 key thesis points |
-| FlashcardAgent | 10–15 Q&A cards |
-| QuizAgent | 5–8 multiple choice questions with explanations |
+| SummaryAgent | 7–10 ключевых тезисов |
+| FlashcardAgent | 10–15 карточек «вопрос — ответ» |
+| QuizAgent | 5–8 вопросов с вариантами ответов и объяснениями |
 
-Results are saved to SQLite and accessible via the session history sidebar.
+Результаты сохраняются в SQLite и доступны через боковую панель с историей сессий.
 
-## Stack
+ ![Тест](media/quiz.png)
 
-- **Backend** — FastAPI + SQLAlchemy (SQLite)
-- **Agents** — LangGraph orchestration, Ollama (`gemma3:12b`)
-- **Parsing** — pdfplumber (PDF), python-docx (DOCX)
-- **Frontend** — Streamlit
-- **Observability** — loguru logs, Prometheus metrics at `/metrics`
-- **Isolation** — Docker + docker-compose
+## Стек
 
-## Run locally
+- **Бэкенд** — FastAPI + SQLAlchemy (async, SQLite)
+- **Агенты** — LangGraph state graph, параллельный запуск через `asyncio.gather`, Ollama (`gemma3:4b`)
+- **Парсинг** — pdfplumber (PDF), python-docx (DOCX), встроенный decode (TXT)
+- **Фронтенд** — Streamlit
+- **Наблюдаемость** — логи loguru, метрики Prometheus на `/metrics`
+- **Изоляция** — Docker + docker-compose
 
-**Prerequisites:** Python 3.12+, [uv](https://docs.astral.sh/uv/), [Ollama](https://ollama.com) with `gemma3:12b` pulled.
+## Запуск локально
+
+**Требования:** Python 3.12+, [uv](https://docs.astral.sh/uv/), [Ollama](https://ollama.com) с загруженной моделью `gemma3:4b`.
 
 ```bash
-# install deps
+# установить зависимости
 uv sync
 
-# pull the model (once)
-ollama pull gemma3:12b
+# загрузить модель (один раз)
+ollama pull gemma3:4b
 
-# terminal 1 — backend
+# терминал 1 — бэкенд
 uv run uvicorn app.main:app --reload
 
-# terminal 2 — frontend
+# терминал 2 — фронтенд
 uv run streamlit run frontend/app.py
 ```
 
-Open **http://localhost:8501**
+Открыть **http://localhost:8501**
 
-## Run with Docker
+## Запуск через Docker
 
 ```bash
 docker compose up --build
 
-# first run only — pull model inside the container
-docker compose exec ollama ollama pull gemma3:12b
+# только при первом запуске — загрузить модель внутри контейнера
+docker compose exec ollama ollama pull gemma3:4b
 ```
 
-| Service | URL |
+| Сервис | URL |
 |---|---|
-| Frontend | http://localhost:8501 |
+| Фронтенд | http://localhost:8501 |
 | Backend API | http://localhost:8000 |
-| Prometheus metrics | http://localhost:8000/metrics |
+| Метрики Prometheus | http://localhost:8000/metrics |
 
-## Project structure
+## Запуск тестов
+
+```bash
+uv run pytest tests/ -v
+```
+
+17 юнит-тестов, все вызовы LLM замоканы 
+
+## Структура проекта
 
 ```
 app/
-├── main.py              # FastAPI routes
-├── config.py            # env-based settings
-├── schemas.py           # Pydantic models
+├── main.py              # FastAPI маршруты + lifespan
+├── config.py            # настройки через переменные окружения
+├── schemas.py           # Pydantic-модели
 ├── agents/
-│   ├── base.py          # shared LLM client + call_llm()
-│   ├── graph.py         # orchestrator (parallel asyncio.gather)
+│   ├── base.py          # общий LLM-клиент + call_llm()
+│   ├── graph.py         # оркестратор (параллельный asyncio.gather)
+│   ├── state.py         # StudyMateState TypedDict
 │   ├── summary.py
 │   ├── flashcard.py
 │   └── quiz.py
-├── parsers/             # PDF / DOCX / TXT extraction
-└── storage/             # SQLAlchemy models + async session
+├── parsers/             # извлечение текста из PDF / DOCX / TXT
+└── storage/             # SQLAlchemy-модели + async-сессия
 frontend/
-└── app.py               # Streamlit UI
+└── app.py               # интерфейс Streamlit
+tests/
+└── test_agents.py       # юнит-тесты с замоканным LLM
+data/                    # том SQLite (Docker)
+media/                   # скриншоты
 ```
 
-## Environment variables
+## Переменные окружения
 
-See `.env.example`. Key ones:
-
-| Variable | Default | Description |
+| Переменная | По умолчанию | Описание |
 |---|---|---|
-| `OLLAMA_BASE_URL` | `http://localhost:11434/v1` | Ollama API endpoint |
-| `LLM_MODEL` | `gemma3:12b` | Model name |
-| `DATABASE_URL` | `sqlite+aiosqlite:///./studymate.db` | DB connection string |
-| `MAX_FILE_SIZE_MB` | `10` | Upload size limit |
+| `OLLAMA_BASE_URL` | `http://localhost:11434/v1` | Адрес Ollama API |
+| `OLLAMA_API_KEY` | `ollama` | API-ключ (Ollama игнорирует, SDK требует) |
+| `LLM_MODEL` | `gemma3:4b` | Название модели |
+| `DATABASE_URL` | `sqlite+aiosqlite:///./studymate.db` | Строка подключения к БД |
+| `MAX_FILE_SIZE_MB` | `10` | Лимит размера загружаемого файла |
